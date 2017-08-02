@@ -47,20 +47,20 @@ type database interface {
 	AddSwitch(SwitchParam) (swID uint64, err error)
 	AddVIP(VIPParam) (id uint64, cidr string, err error)
 	Host(hostID uint64) (host Host, ok bool, err error)
-	Hosts() ([]Host, error)
+	Hosts(limit, offset uint8) ([]Host, error)
 	IPAddrs(networkID uint64) ([]IP, error)
 	Location(mac net.HardwareAddr) (dpid string, port uint32, status LocationStatus, err error)
 	Network(net.IP) (n Network, ok bool, err error)
-	Networks() ([]Network, error)
+	Networks(limit, offset uint8) ([]Network, error)
 	RemoveHost(id uint64) (ok bool, err error)
 	RemoveNetwork(id uint64) (ok bool, err error)
 	RemoveSwitch(id uint64) (ok bool, err error)
 	RemoveVIP(id uint64) (ok bool, err error)
 	Switch(dpid uint64) (sw Switch, ok bool, err error)
-	Switches() ([]Switch, error)
+	Switches(limit, offset uint8) ([]Switch, error)
 	SwitchPorts(switchID uint64) ([]SwitchPort, error)
 	ToggleVIP(id uint64) (net.IP, net.HardwareAddr, error)
-	VIPs() ([]VIP, error)
+	VIPs(limit, offset uint8) ([]VIP, error)
 }
 
 type LocationStatus int
@@ -182,8 +182,8 @@ type Switch struct {
 func (r *Controller) listSwitch(w rest.ResponseWriter, req *rest.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	logger.Debug("listing all switches..")
-	sw, err := r.db.Switches()
+	limit, offset := getURLQuery(w, req)
+	sw, err := r.db.Switches(limit, offset)
 	if err != nil {
 		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
@@ -316,8 +316,8 @@ type Network struct {
 func (r *Controller) listNetwork(w rest.ResponseWriter, req *rest.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	logger.Debug("listing all networks..")
-	networks, err := r.db.Networks()
+	limit, offset := getURLQuery(w, req)
+	networks, err := r.db.Networks(limit, offset)
 	if err != nil {
 		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
@@ -463,8 +463,8 @@ type Host struct {
 func (r *Controller) listHost(w rest.ResponseWriter, req *rest.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	logger.Debug("listing all hosts..")
-	hosts, err := r.db.Hosts()
+	limit, offset := getURLQuery(w, req)
+	hosts, err := r.db.Hosts(limit, offset)
 	if err != nil {
 		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
@@ -604,7 +604,8 @@ type VIP struct {
 func (r *Controller) listVIP(w rest.ResponseWriter, req *rest.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	vip, err := r.db.VIPs()
+	limit, offset := getURLQuery(w, req)
+	vip, err := r.db.VIPs(limit, offset)
 	if err != nil {
 		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
@@ -746,4 +747,28 @@ func (r *Controller) SetEventListener(l EventListener) {
 
 func (r *Controller) String() string {
 	return r.topo.String()
+}
+
+func getURLQuery(w rest.ResponseWriter, req *rest.Request) (l uint8, o uint8) {
+	urlQuery := req.URL.Query()
+	lim := urlQuery.Get("limit")
+	off := urlQuery.Get("offset")
+
+	if lim != "" {
+		limitUint64, err := strconv.ParseUint(lim, 10, 8)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+		}
+		l = uint8(limitUint64)
+	}
+
+	if off != "" {
+		offsetUint64, err := strconv.ParseUint(off, 10, 8)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+		}
+		o = uint8(offsetUint64)
+	}
+
+	return
 }

@@ -216,9 +216,15 @@ func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, status
 	return dpid, port, status, nil
 }
 
-func (r *MySQL) Switches() (sw []network.Switch, err error) {
+func (r *MySQL) Switches(limit, offset uint8) (sw []network.Switch, err error) {
 	f := func(db *sql.DB) error {
-		rows, err := db.Query("SELECT id, dpid, n_ports, first_port, first_printed_port, description FROM switch ORDER BY id DESC")
+		qry := `SELECT id, dpid, n_ports, first_port, description 
+		FROM switch
+		ORDER BY id DESC`
+		if limit != 0 {
+			qry += fmt.Sprintf("LIMIT %d, %d", offset, limit+1)
+		}
+		rows, err := db.Query(qry)
 		if err != nil {
 			return err
 		}
@@ -383,11 +389,14 @@ func (r *MySQL) SwitchPorts(swID uint64) (ports []network.SwitchPort, err error)
 	return ports, nil
 }
 
-func (r *MySQL) Networks() (networks []network.Network, err error) {
+func (r *MySQL) Networks(limit, offset uint8) (networks []network.Network, err error) {
 	f := func(db *sql.DB) error {
 		qry := `SELECT id, INET_NTOA(address), mask
 			FROM network
 			ORDER BY id DESC`
+		if limit != 0 {
+			qry += fmt.Sprintf("LIMIT %d, %d", offset, limit+1)
+		}
 		rows, err := db.Query(qry)
 		if err != nil {
 			return err
@@ -572,7 +581,7 @@ func decodeMAC(s string) (net.HardwareAddr, error) {
 	return net.HardwareAddr(v), nil
 }
 
-func (r *MySQL) Hosts() (hosts []network.Host, err error) {
+func (r *MySQL) Hosts(limit, offset uint8) (hosts []network.Host, err error) {
 	f := func(db *sql.DB) error {
 		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), 
 				IFNULL(CONCAT(D.description, '/', C.number - D.first_port + D.first_printed_port), ''), 
@@ -583,6 +592,9 @@ func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 			LEFT JOIN switch D ON C.switch_id = D.id 
 			JOIN network E ON B.network_id = E.id 
 			ORDER by A.id DESC`
+		if limit != 0 {
+			qry += fmt.Sprintf("LIMIT %d, %d", offset, limit+1)
+		}
 		rows, err := db.Query(qry)
 		if err != nil {
 			return err
@@ -1038,8 +1050,8 @@ func hostMAC(tx *sql.Tx, hostID uint64) (net.HardwareAddr, error) {
 	return mac, nil
 }
 
-func (r *MySQL) VIPs() (result []network.VIP, err error) {
-	vips, err := r.getVIPs()
+func (r *MySQL) VIPs(limit, offset uint8) (result []network.VIP, err error) {
+	vips, err := r.getVIPs(limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -1081,13 +1093,16 @@ type registeredVIP struct {
 	description string
 }
 
-func (r *MySQL) getVIPs() (result []registeredVIP, err error) {
+func (r *MySQL) getVIPs(limit, offset uint8) (result []registeredVIP, err error) {
 	f := func(db *sql.DB) error {
 		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', C.mask), A.active_host_id, A.standby_host_id, A.description 
 			FROM vip A 
 			JOIN ip B ON A.ip_id = B.id 
 			JOIN network C ON C.id = B.network_id 
 			ORDER BY A.id DESC`
+		if limit != 0 {
+			qry += fmt.Sprintf("LIMIT %d, %d", offset, limit+1)
+		}
 		rows, err := db.Query(qry)
 		if err != nil {
 			return err
